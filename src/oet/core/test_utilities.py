@@ -59,7 +59,7 @@ def read_result_file(filename: str | Path) -> tuple[int, float, list[float]]:
 
 def write_input_file(
     filename: str | Path,
-    xyz_filename: str,
+    xyz_filename: Path,
     charge: int,
     multiplicity: int,
     ncores: int,
@@ -88,7 +88,7 @@ def write_input_file(
     """
 
     # Validate inputs (basic checks)
-    if not xyz_filename.endswith(".xyz"):
+    if xyz_filename.suffix != ".xyz":
         raise ValueError("xyz_filename did not end with '.xyz'")
     if multiplicity <= 0:
         raise ValueError("multiplicity must be a positive integer")
@@ -181,14 +181,14 @@ def add_arguments(args: str | list[str], additions: list[str]) -> list[str]:
     return args
 
 
-def get_filenames(basename: str) -> tuple[str, str, str, str]:
+def get_filenames(basename: str) -> tuple[Path, Path, Path, Path]:
     """
     Set the filenames according to how ORCA would do and cleans any input existing
     """
-    xyz_file = basename + ".xyz"
-    input_file = basename + ".extinp.tmp"
-    engrad_out = basename + ".engrad"
-    output_file = basename + ".out"
+    xyz_file = Path(basename + ".xyz")
+    input_file = Path(basename + ".extinp.tmp")
+    engrad_out = Path(basename + ".engrad")
+    output_file = Path(basename + ".out").resolve()
     clear_files(basename=basename)
     return xyz_file, input_file, engrad_out, output_file
 

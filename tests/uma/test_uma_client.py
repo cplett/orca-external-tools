@@ -103,8 +103,9 @@ class UmaTests(unittest.TestCase):
             else:
                 print("Could not load the model files.")
                 raise unittest.SkipTest("Loading failed.")
-        print("Starting the server. A detailed server log can be found on file server.out")
-        with open("server.out", "a") as f:
+        server_out = Path("server.out").resolve()
+        print(f"Starting the server. A detailed server log can be found on file {server_out}")
+        with open(server_out, "a") as f:
             cls.server = subprocess.Popen(
                 [uma_server_path, "uma", "--bind", id_port, "--nthreads", "2"],
                 stdout=f,

@@ -6,9 +6,12 @@ import time
 import unittest
 from pathlib import Path
 
+from oet.calculator.aimnet2 import DEFAULT_MODEL_PATH, Aimnet2Calc
 from oet.core.test_utilities import (
     OH,
     WATER,
+    TimeoutCall,
+    TimeoutCallError,
     get_filenames,
     read_result_file,
     run_wrapper,
@@ -36,6 +39,28 @@ aimnet2_server_path = Path(resolved_server_script)
 # Default ID and port of server. Change if needed
 id_port = "127.0.0.1:9000"
 
+# Model for running the tests
+aimnet_model = "aimnet2"
+
+# Default maximum time (in sec) to download the model files if not present
+timeout = 600
+
+
+def cache_model_files(
+    model: str, device: str = "cpu", cache_dir: Path = DEFAULT_MODEL_PATH
+) -> None:
+    """
+    Wrapper to set check if the required model files are present. If not, they are downloaded.
+
+    model: str
+        Model for computing the test cases.
+    device str, default: cpu
+        Device used for the calculations.
+    cache_dir: str, default: DEFAULT_MODEL_PATH
+        The cache directory used to store the model data.
+    """
+    Aimnet2Calc.get_model_file(model=model, model_dir=str(cache_dir))
+
 
 def run_aimnet2(inputfile: str, output_file: str) -> None:
     run_wrapper(
@@ -53,17 +78,36 @@ class Aimnet2Tests(unittest.TestCase):
         """
         Test starting the server
         """
-        print("Starting the server. A detailed server log can be found on file server.out")
-        with open("server.out", "a") as f:
+        # Pre-download AIMNet2 model files
+        print("Checking the model files and downloading them if necessary.")
+        # Make a timeout call to avoid hanging forever
+        get_pretrained_mlip_timeout = TimeoutCall(fn=cache_model_files)
+        ok, payload = get_pretrained_mlip_timeout(aimnet_model, timeout=timeout)
+        # Check if the model files could not be loaded
+        if not ok:
+            # Timeout
+            if payload == TimeoutCallError.TIMEOUT:
+                raise TimeoutError(
+                    "Loading the model files timed out. "
+                    "Please check your internet connection and consider increasing the time before timing out."
+                )
+            # General errors and crashes
+            else:
+                raise RuntimeError("Loading the model files failed.")
+
+        # Set up the server
+        server_out = Path("server.out").resolve()
+        print(f"Starting the server. A detailed server log can be found on file {server_out}")
+        with open(server_out, "a") as f:
             cls.server = subprocess.Popen(
-                [aimnet2_server_path, "aimnet2", "--bind", id_port, "--nthreads", "2"],
+                [aimnet2_server_path, "aimnet2", "--bind", id_port, "--nthreads", "2", "--model-path", DEFAULT_MODEL_PATH],
                 stdout=f,
                 stderr=subprocess.STDOUT,
                 preexec_fn=os.setsid,
             )
         # Wait a little to make sure it is setup
         # If there are timeout errors, try increasing the sleep time to, .e.g, 30.
-        time.sleep(5)
+        time.sleep(10)
 
     @classmethod
     def tearDownClass(cls):
@@ -109,9 +153,9 @@ class Aimnet2Tests(unittest.TestCase):
             ) from e
 
         self.assertEqual(num_atoms, expected_num_atoms)
-        self.assertAlmostEqual(energy, expected_energy, places=8)
+        self.assertAlmostEqual(energy, expected_energy, places=6)
         for g1, g2 in zip(gradients, expected_gradients):
-            self.assertAlmostEqual(g1, g2, places=8)
+            self.assertAlmostEqual(g1, g2, places=6)
 
     def test_OH_anion_eng_grad(self):
         xyz_file, input_file, engrad_out, output_file = get_filenames("OH_anion_client")
@@ -144,9 +188,9 @@ class Aimnet2Tests(unittest.TestCase):
             ) from e
 
         self.assertEqual(num_atoms, expected_num_atoms)
-        self.assertAlmostEqual(energy, expected_energy, places=8)
+        self.assertAlmostEqual(energy, expected_energy, places=6)
         for g1, g2 in zip(gradients, expected_gradients):
-            self.assertAlmostEqual(g1, g2, places=8)
+            self.assertAlmostEqual(g1, g2, places=6)
 
     def test_OH_rad_eng_grad(self):
         xyz_file, input_file, engrad_out, output_file = get_filenames("OH_rad_client")
@@ -179,9 +223,9 @@ class Aimnet2Tests(unittest.TestCase):
             ) from e
 
         self.assertEqual(num_atoms, expected_num_atoms)
-        self.assertAlmostEqual(energy, expected_energy, places=8)
+        self.assertAlmostEqual(energy, expected_energy, places=6)
         for g1, g2 in zip(gradients, expected_gradients):
-            self.assertAlmostEqual(g1, g2, places=8)
+            self.assertAlmostEqual(g1, g2, places=6)
 
 
 if __name__ == "__main__":

@@ -57,8 +57,9 @@ class MACETests(unittest.TestCase):
         """
         Test starting the server
         """
-        print("Starting the server. A detailed server log can be found on file server.out")
-        with open("server.out", "a") as f:
+        server_out = Path("server.out").resolve()
+        print(f"Starting the server. A detailed server log can be found on file {server_out}")
+        with open(server_out, "a") as f:
             cls.server = subprocess.Popen(
                 [mace_server_path, "mace", "--bind", id_port, "--nthreads", "2"],
                 stdout=f,

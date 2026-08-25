@@ -4,15 +4,10 @@
 
 Examples
 --------
-Run one test suite:
+Run one or more test suite:
 
-    python run_tests.py xtb
-    python run_tests.py mace
+    python run_tests.py xtb mopac
     python run_tests.py aimnet2
-
-Run all suites:
-
-    python run_tests.py all
 
 Use a particular Python interpreter when creating environments:
 
@@ -76,9 +71,10 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "target",
-        choices=[*TEST_ENVIRONMENTS, "all"],
-        help="Test suite to run, or 'all'.",
+        "targets",
+        nargs="+",
+        choices=TEST_ENVIRONMENTS,
+        help="Test suite(s) to run.",
     )
 
     parser.add_argument(
@@ -187,18 +183,6 @@ def get_python_interpreter(venv_dir: Path) -> Path:
     return venv_dir / "bin" / "python"
 
 
-def environment_paths(
-    environment: str,
-    venv_root: Path,
-    bin_root: Path,
-) -> tuple[Path, Path]:
-    """Return venv and script directories for a managed environment."""
-    return (
-        venv_root / environment,
-        bin_root / environment,
-    )
-
-
 def environment_is_ready(venv_dir: Path, bin_dir: Path) -> bool:
     """
     Check whether an existing managed test installation looks usable.
@@ -212,16 +196,18 @@ def environment_is_ready(venv_dir: Path, bin_dir: Path) -> bool:
     bin_dir: Path
         The script dir.
     """
+    # Get the Python interpreter and check if it exists
     python = get_python_interpreter(venv_dir)
-
     if not python.is_file():
         return False
 
+    # Check the bin directory
     if not bin_dir.is_dir():
         return False
 
+    # Check if there is any oet_ script available for testing
     return any(
-        path.is_file() and path.name.startswith("oet")
+        path.is_file() and path.name.startswith("oet_")
         for path in bin_dir.iterdir()
     )
 
@@ -314,19 +300,16 @@ def infer_venv_from_bin(bin_dir: Path) -> Path:
 
     # Collect all the virtual environments from the shebangs of the scripts.
     candidates: dict[Path, list[str]] = {}
-
     for script in scripts:
         # First get the interpreter from the shebang
         interpreter = read_shebang_interpreter(script)
         if interpreter is None:
             continue
-
         # Get the parent directory, which is either `bin` or `scripts`
         # depending on the operating system.
         executable_dir = interpreter.parent
         if executable_dir.name.lower() not in {"bin", "scripts"}:
             continue
-
         # Get the path to the virtual environments.
         venv_dir = executable_dir.parent.resolve()
         candidates.setdefault(venv_dir, []).append(script.name)
@@ -414,7 +397,7 @@ def validate_existing_installation(
     oet_scripts = [
         path
         for path in bin_dir.iterdir()
-        if path.is_file() and path.name.startswith("oet")
+        if path.is_file() and path.name.startswith("oet_")
     ]
 
     if not oet_scripts:
@@ -456,14 +439,14 @@ def install_environment(
     reinstall: bool
         Reinstall the oet if already installed.
     """
-    venv_dir, bin_dir = environment_paths(
-        environment,
-        venv_root,
-        bin_root,
-    )
+    # Get the venv and bin dir
+    venv_dir = venv_root / environment
+    bin_dir = bin_root / environment
 
+    # Check if the environment is ready
     ready = environment_is_ready(venv_dir, bin_dir)
 
+    # If the installation is ready and no reinstallation should be done, return
     if ready and not reinstall:
         print()
         print(f"[setup] Reusing environment '{environment}'")
@@ -471,6 +454,8 @@ def install_environment(
         print(f"[setup] bin:  {bin_dir}")
         return venv_dir, bin_dir
 
+    # If the installation is ready and reinstallation should be done
+    # or if it is not ready, install it.
     if ready:
         print()
         print(f"[setup] Refreshing environment '{environment}'")
@@ -478,6 +463,7 @@ def install_environment(
         print()
         print(f"[setup] Setting up environment '{environment}'")
 
+    # Prepare the command
     command = [
         str(installer_python),
         str(ROOT / "install.py"),
@@ -486,14 +472,14 @@ def install_environment(
         "--script-dir",
         str(bin_dir),
     ]
-
+    # Check for extras to be installed.
     extra = EXTRA_ENVIRONMENTS.get(environment)
-
     if extra is not None:
         command.extend(["--extra", extra])
 
     print(f"[setup] $ {' '.join(command)}")
 
+    # Run the installation
     subprocess.run(
         command,
         cwd=ROOT,
@@ -529,7 +515,7 @@ def make_test_environment(
     bin_dir: Path,
 ) -> dict[str, str]:
     """
-    Build an environment from the virtual environment that should be tested.
+    Get an environment from the virtual environment that should be tested.
     
     Parameters
     ----------
@@ -623,7 +609,7 @@ def run_target(
     reinstall: bool,
     installed: dict[str, tuple[Path, Path]],
     external_installation: tuple[Path, Path] | None = None,
-) -> None:
+) -> list[tuple[Path, subprocess.CalledProcessError]]:
     """
     Set up the required installation and execute one test set.
 
@@ -638,11 +624,16 @@ def run_target(
     bin_root: Path
         The root dir of the bin for installing the oet if necessary.
     reinstall: bool
-        Reinstall the oet if already installed.
+        Reinstall the oet if already installed?
     installed: dict[str, tuple[Path, Path]]
         A dictionary with all available installations.
     external_installation: tuple[Path, Path] | None, default: None
-        External installations if available.
+        External installation if available.
+    
+    Returns
+    -------
+    list[tuple[Path, subprocess.CalledProcessError]]
+        A list with potential errors of different tests.
     """
     # If there is an external installation that should be tested, no installation is done.
     if external_installation is not None:
@@ -663,28 +654,30 @@ def run_target(
         venv_dir, bin_dir = installed[environment]
 
     # Run the test
+    failures: list[tuple[Path, subprocess.CalledProcessError]] = []
     for test_file in test_files(target):
-        run_test_file(
-            test_file,
-            venv_dir=venv_dir,
-            bin_dir=bin_dir,
-        )
+        try:
+            run_test_file(
+                test_file,
+                venv_dir=venv_dir,
+                bin_dir=bin_dir,
+            )
+        except subprocess.CalledProcessError as exc:
+            failures.append((test_file, exc))
+
+    return failures
 
 
 def main() -> int:
     # Parse the arguments
     args = parse_args()
 
-    # Resolve the base directories for installing venv and bin
+    # Resolve the base directories of the venv and bin
     venv_root = args.venv_root.expanduser().resolve()
     bin_root = args.bin_root.expanduser().resolve()
 
     # Check which tests should be carried out
-    targets = (
-        list(TEST_ENVIRONMENTS)
-        if args.target == "all"
-        else [args.target]
-    )
+    targets = args.targets
 
     # Check if an existing installation should be checked.
     external_installation: tuple[Path, Path] | None = None
@@ -707,14 +700,13 @@ def main() -> int:
         )
 
         # Get the python interpreter from the provided venv.
-        # Only done for interfacing, it has no actual use
         installer_python = get_python_interpreter(external_venv_dir)
 
     else:
-        # If no external venv can be found, get the python interpreter
-        # for installation.
+        # If no external venv can be found, get the current python interpreter for installation.
         installer_python = resolve_python(args.python)
 
+    # Print a summary of what will be used
     print()
     print(f"[runner] Repository: {ROOT}")
     print(f"[runner] Targets:    {', '.join(targets)}")
@@ -727,75 +719,63 @@ def main() -> int:
     else:
         print("[runner] Mode:       existing installation")
 
-    if args.target == "all" and external_installation is not None:
-        print()
-        print(
-            "[runner] Warning: 'all' with --bin-dir runs every test suite "
-            "against the same installation."
-        )
-        print(
-            "[runner] This may fail when mutually incompatible optional "
-            "dependencies are required."
-        )
-
-    # Avoid setting up the same shared environment multiple times
-    # when running all tests.
+    # Avoid setting up the same shared environment multiple times when running multiple tests.
+    # Therefore, keep track about which venvs were already installed.
     installed: dict[str, tuple[Path, Path]] = {}
 
     passed: list[str] = []
+    failed: dict[str, list[tuple[Path, subprocess.CalledProcessError]]] = {}
 
-    try:
-        # Run the tests (and install a venv if necessary) one-by-one.
-        for target in targets:
-            print()
-            print("#" * 78)
-            print(f"# Running {target}")
-            print("#" * 78)
+    for target in targets:
+        print()
+        print("#" * 78)
+        print(f"# Running {target}")
+        print("#" * 78)
 
-            run_target(
-                target,
-                installer_python=installer_python,
-                venv_root=venv_root,
-                bin_root=bin_root,
-                reinstall=args.refresh,
-                installed=installed,
-                external_installation=external_installation,
-            )
+        failures = run_target(
+            target,
+            installer_python=installer_python,
+            venv_root=venv_root,
+            bin_root=bin_root,
+            reinstall=args.refresh,
+            installed=installed,
+            external_installation=external_installation,
+        )
 
+        if failures:
+            failed[target] = failures
+        else:
             passed.append(target)
 
-    # Handle individual failed tests and pass an respective error.
-    except subprocess.CalledProcessError as exc:
-        print()
-        print("=" * 78)
-        print("[runner] TEST FAILED")
-        print(f"[runner] Command: {exc.cmd}")
-        print(f"[runner] Exit code: {exc.returncode}")
-        print("=" * 78)
+    # Do a final printout.
+    print()
+    print("=" * 78)
+
+    # In case anything failed, return with a non-zero return code.
+    if failed:
+        print("[runner] SOME REQUESTED TESTS FAILED")
 
         if passed:
-            print(
-                "[runner] Passed before failure: "
-                + ", ".join(passed)
-            )
+            print(f"[runner] Passed: {', '.join(passed)}")
 
-        return exc.returncode or 1
+        print("[runner] Failed:")
 
-    # Handle a general error.
-    except Exception as exc:
-        print()
-        print("=" * 78)
-        print("[runner] ERROR")
-        print(f"[runner] {exc}")
+        for target, failures in failed.items():
+            print(f"[runner]   {target}")
+
+            for test_file, exc in failures:
+                print(
+                    f"[runner]     {test_file.relative_to(ROOT)}: "
+                    f"exit code {exc.returncode}"
+                )
+
         print("=" * 78)
         return 1
 
-    print()
-    print("=" * 78)
+    # Everything succeeded.
     print("[runner] ALL REQUESTED TESTS PASSED")
     print(f"[runner] Passed: {', '.join(passed)}")
     print("=" * 78)
-
     return 0
 
 

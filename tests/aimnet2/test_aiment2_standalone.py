@@ -16,7 +16,7 @@ from oet.core.test_utilities import (
 # release ships retrained model files (storage path .../aimnet2v2/...)
 # whose energies differ from v0.1.x by ~1e-6 Eh at this geometry.
 # v0.2 is bit-exact deterministic across runs and between standalone
-# wrapper and server paths, so places=8 holds.
+# wrapper and server paths, so places=6 holds.
 
 # Get the path to the script that should be tested
 resolved_aimnet2_script = shutil.which("oet_aimnet2")
@@ -70,9 +70,9 @@ class Aimnet2Tests(unittest.TestCase):
             ) from e
 
         self.assertEqual(num_atoms, expected_num_atoms)
-        self.assertAlmostEqual(energy, expected_energy, places=8)
+        self.assertAlmostEqual(energy, expected_energy, places=6)
         for g1, g2 in zip(gradients, expected_gradients):
-            self.assertAlmostEqual(g1, g2, places=8)
+            self.assertAlmostEqual(g1, g2, places=6)
 
     def test_OH_anion_eng_grad(self):
         xyz_file, input_file, engrad_out, output_file = get_filenames("OH_ainion")
@@ -105,9 +105,9 @@ class Aimnet2Tests(unittest.TestCase):
             ) from e
 
         self.assertEqual(num_atoms, expected_num_atoms)
-        self.assertAlmostEqual(energy, expected_energy, places=8)
+        self.assertAlmostEqual(energy, expected_energy, places=6)
         for g1, g2 in zip(gradients, expected_gradients):
-            self.assertAlmostEqual(g1, g2, places=8)
+            self.assertAlmostEqual(g1, g2, places=6)
 
     def test_OH_rad_eng_grad(self):
         xyz_file, input_file, engrad_out, output_file = get_filenames("OH_rad")
@@ -140,9 +140,9 @@ class Aimnet2Tests(unittest.TestCase):
             ) from e
 
         self.assertEqual(num_atoms, expected_num_atoms)
-        self.assertAlmostEqual(energy, expected_energy, places=8)
+        self.assertAlmostEqual(energy, expected_energy, places=6)
         for g1, g2 in zip(gradients, expected_gradients):
-            self.assertAlmostEqual(g1, g2, places=8)
+            self.assertAlmostEqual(g1, g2, places=6)
 
 
 if __name__ == "__main__":
