@@ -19,8 +19,6 @@ from argparse import ArgumentParser
 from pathlib import Path
 from typing import Any
 
-from ase.calculators.calculator import PropertyNotImplementedError
-
 from oet import ASSETS_DIR
 from oet.core.base_calc import BaseCalc, CalculationData
 from oet.core.misc import ENERGY_CONVERSION, LENGTH_CONVERSION, xyzfile_to_at_coord
@@ -29,6 +27,7 @@ try:
     # Suppress pkg_resources deprecated warning
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
+        from ase.calculators.calculator import PropertyNotImplementedError
         from fairchem.core import FAIRChemCalculator, pretrained_mlip
         from fairchem.core.calculate.pretrained_mlip import available_models
         from fairchem.core.units.mlip_unit.api.inference import UMATask

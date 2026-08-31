@@ -8,8 +8,6 @@ import warnings
 from argparse import ArgumentParser
 from typing import Any
 
-from ase.calculators.calculator import PropertyNotImplementedError
-
 from oet.core.base_calc import BaseCalc, CalculationData
 from oet.core.misc import ENERGY_CONVERSION, LENGTH_CONVERSION, xyzfile_to_at_coord
 
@@ -20,6 +18,7 @@ try:
             "ignore",
             message="Environment variable TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD detected",
         )
+        from ase.calculators.calculator import PropertyNotImplementedError
         from mace.calculators.foundations_models import mace_mp, mace_omol
         from mace.calculators.mace import MACECalculator
 except ImportError as e:
