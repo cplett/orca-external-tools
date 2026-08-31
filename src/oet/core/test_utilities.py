@@ -4,9 +4,10 @@ Utilities used in the test suite
 
 import multiprocessing as mp
 import subprocess
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from multiprocessing.queues import Queue
@@ -283,7 +284,7 @@ class TimeoutCall:
         """
 
         # Start process and wait the timeout
-        q: "Queue[bool]" = mp.Queue()
+        q: Queue[bool] = mp.Queue()
         p: mp.Process = mp.Process(target=_worker, args=(self.fn, args, kwargs, q))
         p.start()
         p.join(timeout)

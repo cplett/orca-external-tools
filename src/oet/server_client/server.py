@@ -55,7 +55,7 @@ if typing.TYPE_CHECKING:
 # we never use the same instance by multiple processes in parallel.
 # key: (module, class, frozenset(setup_items)) -> calc instance
 # OrderedDict, where the most currently used entry is moved to the end
-_WORKER_CALC_CACHE: "OrderedDict[tuple[str, str, frozenset[tuple[str, Any]]], Any]" = OrderedDict()
+_WORKER_CALC_CACHE: OrderedDict[tuple[str, str, frozenset[tuple[str, Any]]], Any] = OrderedDict()
 
 
 def _pop_one_worker(protected_key: tuple[str, str, frozenset[tuple[str, Any]]] | None) -> bool:
@@ -236,8 +236,7 @@ class CoreLimiter:
         n = int(n)
         with self._cv:
             self.available += n
-            if self.available > self.total:
-                self.available = self.total
+            self.available = min(self.available, self.total)
             self._cv.notify_all()
 
 

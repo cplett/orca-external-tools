@@ -226,7 +226,6 @@ class BaseCalc(ABC):
         float: electronic energy in Hartree
         list[float]: gradient in Hartree/Bohr, leave empty if dograd=False
         """
-        pass
 
     def run(
         self,
@@ -339,7 +338,6 @@ class BaseCalc(ABC):
         parser: ArgumentParser
             Parser that should be extended
         """
-        pass
 
     def release(self) -> None:
         """
@@ -351,7 +349,6 @@ class BaseCalc(ABC):
         Server-mode worker cache eviction calls this before evicting
         a cached calculator. Must be idempotent.
         """
-        pass
 
     def _check_python_version(self) -> None:
         """
