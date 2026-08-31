@@ -27,38 +27,69 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+import tomllib
 
-
-# Store some paths.
+# Set some default paths
 ROOT = Path(__file__).resolve().parent
 TESTS_DIR = ROOT / "tests"
-
-# Set some defaults
+PYPROJECT = ROOT / "pyproject.toml"
 DEFAULT_VENV_ROOT = ROOT / ".test-venvs"
 DEFAULT_BIN_ROOT = ROOT / ".test-bins"
 
-# These backends have additional, potentially incompatible dependencies and
-# therefore receive their own virtual environments.
-EXTRA_ENVIRONMENTS = {
-    "aimnet2": "aimnet2",
-    "mace": "mace",
-    "mlatom": "mlatom",
-    "uma": "uma",
-}
+# Get extra dependencies that require installation in separate venvs.
+def get_backend_extras() -> set[str]:
+    """
+    Return optional extras defined in pyproject.toml.
+    """
+    with PYPROJECT.open("rb") as handle:
+        pyproject = tomllib.load(handle)
+
+    optional_dependencies = (
+        pyproject
+        .get("project", {})
+        .get("optional-dependencies", {})
+    )
+
+    # Optional dependency groups that are not methods to install.
+    non_backend_extras = {"dev"}
+
+    return set(optional_dependencies) - non_backend_extras
+BACKEND_EXTRAS = get_backend_extras()
 
 # Everything else can use the regular OET installation.
 SHARED_ENVIRONMENT = "base"
 
+# Get the executable scripts that have a test.
+def get_test_executables() -> dict[str, str]:
+    """Return OET executables having an integration test suite."""
+    with PYPROJECT.open("rb") as handle:
+        pyproject = tomllib.load(handle)
+
+    scripts = (
+        pyproject
+        .get("project", {})
+        .get("scripts", {})
+    )
+
+    executables = {}
+
+    for script in scripts:
+        if not script.startswith("oet_"):
+            continue
+
+        target = script.removeprefix("oet_")
+
+        if (TESTS_DIR / target).is_dir():
+            executables[target] = script
+
+    return executables
+
+TEST_EXECUTABLES = get_test_executables()
+
 # Define which tests are currently possible.
-# The values correspond to the virtual environment that should be used.
 TEST_ENVIRONMENTS = {
-    "aimnet2": "aimnet2",
-    "g-xtb": SHARED_ENVIRONMENT,
-    "mace": "mace",
-    "mlatom": "mlatom",
-    "mopac": SHARED_ENVIRONMENT,
-    "uma": "uma",
-    "xtb": SHARED_ENVIRONMENT,
+    target: target if target in BACKEND_EXTRAS else SHARED_ENVIRONMENT
+    for target in TEST_EXECUTABLES
 }
 
 
@@ -183,6 +214,36 @@ def get_python_interpreter(venv_dir: Path) -> Path:
     return venv_dir / "bin" / "python"
 
 
+def get_external_venv(
+    target: str,
+    installations: dict[str, Path],
+) -> Path:
+    """
+    Get the venv belonging to the targets test name.
+
+    Parameters
+    ----------
+    target: str
+        The target name of the test.
+    installations: dict[str, Path]
+        The installations (script-venv mapping).
+    
+    Returns
+    -------
+    Path
+        The path to the venv.
+    """
+    script = TEST_EXECUTABLES[target]
+
+    try:
+        return installations[script]
+    except KeyError:
+        raise RuntimeError(
+            f"Required executable '{script}' for test target "
+            f"'{target}' was not found."
+        )
+
+
 def environment_is_ready(venv_dir: Path, bin_dir: Path) -> bool:
     """
     Check whether an existing managed test installation looks usable.
@@ -261,13 +322,10 @@ def read_shebang_interpreter(script: Path) -> Path | None:
     return interpreter
 
 
-def infer_venv_from_bin(bin_dir: Path) -> Path:
+def infer_venvs_from_bin(bin_dir: Path) -> dict[str, Path]:
     """
     Infer a virtual environment from the installed OET wrapper scripts.
-
-    All readable oet_* scripts with an absolute Python shebang must agree on
-    the same virtual environment. If they reference multiple environments,
-    inference is considered unsafe and the user must specify --venv-dir.
+    The shebang will be used for this.
 
     Parameters
     ----------
@@ -276,8 +334,8 @@ def infer_venv_from_bin(bin_dir: Path) -> Path:
         
     Returns
     -------
-    Path
-        The Path to the virtual environment belonging to the scripts in the bin dir.
+    dict[str, Path]
+        The Path to the virtual environment belonging to the respective script.
     """
 
     # Resolve the bin path.
@@ -299,7 +357,7 @@ def infer_venv_from_bin(bin_dir: Path) -> Path:
         )
 
     # Collect all the virtual environments from the shebangs of the scripts.
-    candidates: dict[Path, list[str]] = {}
+    candidates: dict[str, Path] = {}
     for script in scripts:
         # First get the interpreter from the shebang
         interpreter = read_shebang_interpreter(script)
@@ -312,7 +370,15 @@ def infer_venv_from_bin(bin_dir: Path) -> Path:
             continue
         # Get the path to the virtual environments.
         venv_dir = executable_dir.parent.resolve()
-        candidates.setdefault(venv_dir, []).append(script.name)
+        candidates[script.name] = venv_dir
+
+        # Safety check that the python interpreter exists.
+        python = get_python_interpreter(venv_dir)
+        if not python.is_file():
+            raise RuntimeError(
+                f"{script.name} references a virtual environment whose "
+                f"Python executable does not exist: {python}"
+            )
 
     if not candidates:
         raise RuntimeError(
@@ -320,40 +386,13 @@ def infer_venv_from_bin(bin_dir: Path) -> Path:
             f"in {bin_dir}. Please provide --venv-dir explicitly."
         )
 
-    # If scripts belonging to different OET installations were found, exit.
-    if len(candidates) > 1:
-        details = "\n".join(
-            f"  {venv}: {', '.join(names)}"
-            for venv, names in sorted(
-                candidates.items(),
-                key=lambda item: str(item[0]),
-            )
-        )
-        raise RuntimeError(
-            "The OET scripts reference multiple virtual environments:\n"
-            f"{details}\n"
-            "Please provide --venv-dir explicitly."
-        )
-
-    # Safety check that the python interpreter exists.
-    venv_dir = next(iter(candidates))
-    python = get_python_interpreter(venv_dir)
-    if not python.is_file():
-        referenced_scripts = ", ".join(candidates[venv_dir])
-        raise RuntimeError(
-            "The OET wrappers reference a virtual environment, but its "
-            f"Python executable does not exist: {python}\n"
-            f"Referenced by: {referenced_scripts}"
-        )
-
     # Inform about the virtual environment used.
     print()
-    print("[setup] Inferred virtual environment")
-    print(f"[setup] bin:    {bin_dir}")
-    print(f"[setup] venv:   {venv_dir}")
-    print(f"[setup] Python: {python}")
+    print("[setup] Inferred virtual environments")
+    for script, venv_dir in sorted(candidates.items()):
+        print(f"[setup] {script}: {venv_dir}")
 
-    return venv_dir
+    return candidates
 
 
 def validate_existing_installation(
@@ -473,9 +512,8 @@ def install_environment(
         str(bin_dir),
     ]
     # Check for extras to be installed.
-    extra = EXTRA_ENVIRONMENTS.get(environment)
-    if extra is not None:
-        command.extend(["--extra", extra])
+    if environment in BACKEND_EXTRAS:
+        command.extend(["--extra", environment])
 
     print(f"[setup] $ {' '.join(command)}")
 
@@ -603,12 +641,13 @@ def run_test_file(
 def run_target(
     target: str,
     *,
-    installer_python: Path,
+    installer_python: Path | None,
     venv_root: Path,
     bin_root: Path,
     reinstall: bool,
     installed: dict[str, tuple[Path, Path]],
-    external_installation: tuple[Path, Path] | None = None,
+    external_installations: dict[str, Path] | None = None,
+    external_bin_dir: Path | None = None,
 ) -> list[tuple[Path, subprocess.CalledProcessError]]:
     """
     Set up the required installation and execute one test set.
@@ -617,7 +656,7 @@ def run_target(
     ----------
     target: str
         The target test to run.
-    installer_python: Path
+    installer_python: Path | None
         The python interpreter for installing the oet if necessary.
     venv_root: Path
         The root dir of the venv for installing the oet if necessary.
@@ -627,8 +666,10 @@ def run_target(
         Reinstall the oet if already installed?
     installed: dict[str, tuple[Path, Path]]
         A dictionary with all available installations.
-    external_installation: tuple[Path, Path] | None, default: None
+    external_installations: dict[str, Path] | None, default: None
         External installation if available.
+    external_bin_dir: Path | None, default: None
+        External bin dirs. Must be provided if `external_installations` was given.
     
     Returns
     -------
@@ -636,10 +677,17 @@ def run_target(
         A list with potential errors of different tests.
     """
     # If there is an external installation that should be tested, no installation is done.
-    if external_installation is not None:
-        venv_dir, bin_dir = external_installation
+    if external_installations is not None:
+        assert external_bin_dir is not None
+
+        venv_dir = get_external_venv(
+            target,
+            external_installations,
+        )
+        bin_dir = external_bin_dir
     # Otherwise, install the oet
     else:
+        assert installer_python is not None
         environment = TEST_ENVIRONMENTS[target]
 
         if environment not in installed:
@@ -680,27 +728,30 @@ def main() -> int:
     targets = args.targets
 
     # Check if an existing installation should be checked.
-    external_installation: tuple[Path, Path] | None = None
+    external_installations: dict[str, Path] | None = None
+    external_bin_dir: Path | None = None
+    installer_python: Path | None = None
     if args.bin_dir is not None:
         # First the bin dir.
         external_bin_dir = args.bin_dir.expanduser().resolve()
         # Second the venv.
         # Use either a provided venv or try to derive the venv from the scripts.
         if args.venv_dir is not None:
-            external_venv_dir = args.venv_dir.expanduser().resolve()
+            # Explicit override: use this venv for all available scripts.
+            venv_dir = args.venv_dir.expanduser().resolve()
+
+            validate_existing_installation(
+                venv_dir,
+                external_bin_dir,
+            )
+            external_installations = {
+                TEST_EXECUTABLES[target]: venv_dir
+                for target in targets
+            }
         else:
-            external_venv_dir = infer_venv_from_bin(
+            external_installations = infer_venvs_from_bin(
                 external_bin_dir
             )
-
-        # Check if the venv is valid.
-        external_installation = validate_existing_installation(
-            external_venv_dir,
-            external_bin_dir,
-        )
-
-        # Get the python interpreter from the provided venv.
-        installer_python = get_python_interpreter(external_venv_dir)
 
     else:
         # If no external venv can be found, get the current python interpreter for installation.
@@ -711,7 +762,7 @@ def main() -> int:
     print(f"[runner] Repository: {ROOT}")
     print(f"[runner] Targets:    {', '.join(targets)}")
 
-    if external_installation is None:
+    if external_installations is None:
         print("[runner] Mode:       managed installation")
         print(f"[runner] Python:     {installer_python}")
         print(f"[runner] Venv root:  {venv_root}")
@@ -739,7 +790,8 @@ def main() -> int:
             bin_root=bin_root,
             reinstall=args.refresh,
             installed=installed,
-            external_installation=external_installation,
+            external_installations=external_installations,
+            external_bin_dir=external_bin_dir,
         )
 
         if failures:

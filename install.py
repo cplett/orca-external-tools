@@ -6,10 +6,34 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 import shutil
+import tomllib
 
 
-# Available extras
-EXTRAS = ["aimnet2", "mace", "mlatom", "uma"]
+ROOT = Path(__file__).resolve().parent
+PYPROJECT = ROOT / "pyproject.toml"
+
+NON_BACKEND_EXTRAS = {"dev"}
+
+
+def get_backend_extras() -> list[str]:
+    """Return backend extras declared in pyproject.toml."""
+    with PYPROJECT.open("rb") as handle:
+        pyproject = tomllib.load(handle)
+
+    optional_dependencies = (
+        pyproject
+        .get("project", {})
+        .get("optional-dependencies", {})
+    )
+
+    return sorted(
+        name
+        for name in optional_dependencies
+        if name not in NON_BACKEND_EXTRAS
+    )
+
+
+EXTRAS = get_backend_extras()
 
 # Minimal python interpreter required by the base class
 minimal_python_version = (3, 11)
