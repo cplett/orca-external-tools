@@ -104,8 +104,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "targets",
         nargs="+",
+        metavar="TARGET",
         choices=TEST_ENVIRONMENTS,
-        help="Test suite(s) to run.",
+        help=f"Test suite(s) to run. Options: {", ".join(TEST_ENVIRONMENTS)}",
     )
 
     parser.add_argument(
@@ -504,13 +505,15 @@ def install_environment(
 
     # Prepare the command
     command = [
-        str(installer_python),
+        installer_python,
         str(ROOT / "install.py"),
         "--venv-dir",
         str(venv_dir),
         "--script-dir",
         str(bin_dir),
+        "--editable",
     ]
+    
     # Check for extras to be installed.
     if environment in BACKEND_EXTRAS:
         command.extend(["--extra", environment])
