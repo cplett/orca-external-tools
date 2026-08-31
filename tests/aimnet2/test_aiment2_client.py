@@ -100,7 +100,16 @@ class Aimnet2Tests(unittest.TestCase):
         print(f"Starting the server. A detailed server log can be found on file {server_out}")
         with open(server_out, "a") as f:
             cls.server = subprocess.Popen(
-                [aimnet2_server_path, "aimnet2", "--bind", id_port, "--nthreads", "2", "--model-path", DEFAULT_MODEL_PATH],
+                [
+                    aimnet2_server_path,
+                    "aimnet2",
+                    "--bind",
+                    id_port,
+                    "--nthreads",
+                    "2",
+                    "--model-path",
+                    DEFAULT_MODEL_PATH,
+                ],
                 stdout=f,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,

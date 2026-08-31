@@ -8,13 +8,14 @@ from pathlib import Path
 import shutil
 import tomllib
 
-
+# Set some paths and variables
 ROOT = Path(__file__).resolve().parent
 PYPROJECT = ROOT / "pyproject.toml"
 
 NON_BACKEND_EXTRAS = {"dev"}
 
 
+# Get backends that require a separate venv.
 def get_backend_extras() -> list[str]:
     """Return backend extras declared in pyproject.toml."""
     with PYPROJECT.open("rb") as handle:
