@@ -18,6 +18,7 @@ try:
             "ignore",
             message="Environment variable TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD detected",
         )
+        from ase.calculators.calculator import PropertyNotImplementedError
         from mace.calculators.foundations_models import mace_mp, mace_omol
         from mace.calculators.mace import MACECalculator
 except ImportError as e:
@@ -89,15 +90,15 @@ class MaceCalc(BaseCalc):
             return
         match suite:
             case "mp":
-                kwargs = dict(
-                    model=model,
-                    device=device,
-                    default_dtype=default_dtype or "float32",
-                    dispersion=dispersion,
-                    damping=damping,
-                    dispersion_xc=dispersion_xc,
-                    dispersion_cutoff=(dispersion_cutoff * LENGTH_CONVERSION["Ang"]),
-                )
+                kwargs: dict[str, object] = {
+                    "model": model,
+                    "device": device,
+                    "default_dtype": default_dtype or "float32",
+                    "dispersion": dispersion,
+                    "damping": damping,
+                    "dispersion_xc": dispersion_xc,
+                    "dispersion_cutoff": (dispersion_cutoff * LENGTH_CONVERSION["Ang"]),
+                }
                 if head:
                     kwargs["head"] = head
                 calc = mace_mp(**kwargs)
@@ -244,7 +245,7 @@ class MaceCalc(BaseCalc):
             # Convert forces to gradient (-1) and unit conversion
             fac = -LENGTH_CONVERSION["Ang"] / ENERGY_CONVERSION["eV"]
             gradient = (fac * forces).flatten().tolist()
-        except Exception:
+        except PropertyNotImplementedError:
             # forces may not be available
             pass
 
