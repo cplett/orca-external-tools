@@ -27,6 +27,7 @@ try:
     # Suppress pkg_resources deprecated warning
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
+        from ase.calculators.calculator import PropertyNotImplementedError
         from fairchem.core import FAIRChemCalculator, pretrained_mlip
         from fairchem.core.calculate.pretrained_mlip import available_models
         from fairchem.core.units.mlip_unit.api.inference import UMATask
@@ -257,7 +258,7 @@ class UmaCalc(BaseCalc):
             # Convert forces to gradient (-1) and unit conversion
             fac = -LENGTH_CONVERSION["Ang"] / ENERGY_CONVERSION["eV"]
             gradient = (fac * forces).flatten().tolist()
-        except Exception:
+        except PropertyNotImplementedError:
             # forces may not be available
             pass
 
@@ -302,7 +303,7 @@ class UmaCalc(BaseCalc):
             or not isinstance(device, str)
             or not isinstance(cache_dir, str)
         ):
-            raise RuntimeError("Problems handling input parameters.")
+            raise TypeError("Problems handling input parameters.")
         # Check if the model files are available
         model_files_available = self.check_for_model_files(basemodel=basemodel, cache_dir=cache_dir)
         # If they are available, switch to offline mode.

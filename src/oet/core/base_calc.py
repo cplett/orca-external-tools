@@ -155,7 +155,7 @@ class CalculationData:
         if not exe_path_or_name:
             return False
         # str | Path handling
-        if isinstance(exe_path_or_name, str) or isinstance(exe_path_or_name, Path):
+        if isinstance(exe_path_or_name, (str, Path)):
             try:
                 self.prog_path = search_path(exe_path_or_name)
                 return True

@@ -120,7 +120,7 @@ def check_multi_progs(keys: Sequence[str]) -> Path | None:
     for key in keys:
         try:
             return check_prog(key)
-        except Exception:
+        except (FileNotFoundError, PermissionError):
             continue
     return None
 

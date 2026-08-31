@@ -158,7 +158,7 @@ def run_wrapper(
         cmd += args
 
     with open(outfile, "w") as f:
-        subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, timeout=timeout)
+        subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, timeout=timeout, check=False)
 
 
 def add_arguments(args: str | list[str], additions: list[str]) -> list[str]:

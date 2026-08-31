@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+s#!/usr/bin/env python3
 """
 This is a simple wrapper for the g-xTB binary (github.com/grimme-lab/g-xTB), compatible with ORCA's ExtTool interface.
 Note that this is currently a development version of g-xTB and that the final implementation will be available via tblite.
@@ -150,7 +150,6 @@ class GxtbCalc(BaseCalc):
         if not calc_data.prog_path:
             raise RuntimeError("Path to program is None.")
         run_command(calc_data.prog_path, calc_data.output_file, args)
-
 
     def read_gxtbout(
         self, energy_out: str | Path, grad_out: str | Path, natoms: int, dograd: bool

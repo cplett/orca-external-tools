@@ -103,7 +103,7 @@ class Aimnet2Tests(unittest.TestCase):
                 [aimnet2_server_path, "aimnet2", "--bind", id_port, "--nthreads", "2", "--model-path", DEFAULT_MODEL_PATH],
                 stdout=f,
                 stderr=subprocess.STDOUT,
-                preexec_fn=os.setsid,
+                start_new_session=True,
             )
         # Wait a little to make sure it is setup
         # If there are timeout errors, try increasing the sleep time to, .e.g, 30.

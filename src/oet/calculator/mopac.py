@@ -308,7 +308,7 @@ class MopacCalc(BaseCalc):
         prog = args_parsed.get("prog")
         method = args_parsed.get("method")
         if not isinstance(method, str):
-            raise RuntimeError("Problems detecting method.")
+            raise TypeError("Problems detecting method.")
         # Set and check the program path if its executable
         calc_data.set_program_path(prog)
         if calc_data.prog_path:
