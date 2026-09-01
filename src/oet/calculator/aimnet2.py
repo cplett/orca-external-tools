@@ -662,9 +662,9 @@ class Aimnet2Calc(BaseCalc):
         Returns
         -------
         bool
-            Whether special arguments were handled and the script can exit.
+            Whether special arguments were handled and the script can exit or not.
         """
-        # Create an argument parser and parse.
+        # Create an argument parser.
         parser = ArgumentParser(add_help=False)
         self.extend_parser(parser=parser)
         args, _ = parser.parse_known_args(input_args)
@@ -840,7 +840,7 @@ class Aimnet2Calc(BaseCalc):
         """
         model = args_parsed.get("model")
         model_dir = args_parsed.get("model_dir")
-        user_set_cutoff = args_parsed.get("coulomb_cutoff")
+        coulomb_cutoff = args_parsed.get("coulomb_cutoff")
         device = str(args_parsed.get("device"))
         coulomb_method = args_parsed.get("coulomb_method")
         compile_model = args_parsed.get("compile")
@@ -848,7 +848,6 @@ class Aimnet2Calc(BaseCalc):
         ensemble_member = args_parsed.get("ensemble_member")
         coulomb = args_parsed.get("coulomb")
         dispersion = args_parsed.get("dispersion")
-        coulomb_cutoff = args_parsed.get("coulomb_cutoff")
         dftd3_cutoff = args_parsed.get("dftd3_cutoff")
         dftd3_smoothing_fraction = args_parsed.get("dftd3_smoothing_fraction")
 
@@ -856,7 +855,6 @@ class Aimnet2Calc(BaseCalc):
         if (
             not isinstance(model_dir, str)
             or not isinstance(model, str)
-            or not isinstance(user_set_cutoff, float)
             or not isinstance(device, str)
             or not isinstance(compile_model, bool)
             or coulomb_method is not None
@@ -886,7 +884,7 @@ class Aimnet2Calc(BaseCalc):
         # stashing the parser in args_parsed used to poison server.py's cache
         # key (frozenset of args_parsed.items()) because ArgumentParser is
         # hashed by identity. SystemExit's message goes to stderr automatically.
-        if user_set_cutoff != 15.0 and coulomb_method is None:
+        if coulomb_cutoff != 15.0 and coulomb_method is None:
             raise SystemExit("oet_aimnet2: error: --coulomb-cutoff requires --coulomb-method")
 
         # Mirror the argparse default so mypy sees a guaranteed-str (the

@@ -38,7 +38,7 @@ aimnet2_script_path = Path(resolved_aimnet2_script)
 
 def cache_model_files(model: str, cache_dir: Path = DEFAULT_MODEL_PATH) -> None:
     """
-    Wrapper to set check if the required model files are present. If not, they are downloaded.
+    Wrapper to check if the required model files are present. If not, they are downloaded.
 
     model: str
         Model for computing the test cases.
@@ -68,7 +68,7 @@ class Aimnet2Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """
-        Test starting the server
+        Downloading the model files if necessary.
         """
         # Pre-download AIMNet2 model files
         print("Checking the model files and downloading them if necessary.")

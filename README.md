@@ -37,7 +37,7 @@ python run_tests.py <name_of_the_test> --bin-dir <name_of_the_bin_dir>
 ```
 
 where `--bin-dir` is used to define the directories with the `oet_` scripts. 
-If this option is not used, the script will carry out an installation of the OET.
+If `--bin-dir` is not used, the script will install OET with the required extras.
 It is also possible to run multiple tests by adding multiple `<name_of_the_test>`.
 
 ## Usage

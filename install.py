@@ -12,12 +12,15 @@ import tomllib
 ROOT = Path(__file__).resolve().parent
 PYPROJECT = ROOT / "pyproject.toml"
 
+# Backend extras defined in pyproject.toml that don't come with tests.
 NON_BACKEND_EXTRAS = {"dev"}
 
 
 # Get backends that require a separate venv.
 def get_backend_extras() -> list[str]:
-    """Return backend extras declared in pyproject.toml."""
+    """
+    Return backend extras declared in pyproject.toml except the `NON_BACKEND_EXTRAS`.
+    """
     with PYPROJECT.open("rb") as handle:
         pyproject = tomllib.load(handle)
 

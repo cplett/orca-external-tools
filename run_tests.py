@@ -6,16 +6,8 @@ Examples
 --------
 Run one or more test suite:
 
-    python run_tests.py xtb mopac
-    python run_tests.py aimnet2
-
-Use a particular Python interpreter when creating environments:
-
-    python run_tests.py <test_name> --python python3.12
-
-Re-run install.py even when the environment already exists:
-
-    python run_tests.py <test_name> --refresh
+    run_tests.py xtb mopac --bin-dir <bin_dir_name>
+    run_tests.py aimnet2 --bin-dir <bin_dir_name>
 """
 
 from __future__ import annotations
@@ -36,6 +28,9 @@ PYPROJECT = ROOT / "pyproject.toml"
 DEFAULT_VENV_ROOT = ROOT / ".test-venvs"
 DEFAULT_BIN_ROOT = ROOT / ".test-bins"
 
+# Backend extras defined in pyproject.toml that don't come with tests.
+NON_BACKEND_EXTRAS = {"dev"}
+
 # Get extra dependencies that require installation in separate venvs.
 def get_backend_extras() -> set[str]:
     """
@@ -50,10 +45,13 @@ def get_backend_extras() -> set[str]:
         .get("optional-dependencies", {})
     )
 
-    # Optional dependency groups that are not methods to install.
-    non_backend_extras = {"dev"}
+    return set(sorted(
+        name
+        for name in optional_dependencies
+        if name not in NON_BACKEND_EXTRAS
+    )
+    )
 
-    return set(optional_dependencies) - non_backend_extras
 BACKEND_EXTRAS = get_backend_extras()
 
 # Everything else can use the regular OET installation.
@@ -62,6 +60,7 @@ SHARED_ENVIRONMENT = "base"
 # Get the executable scripts that have a test.
 def get_test_executables() -> dict[str, str]:
     """Return OET executables having an integration test suite."""
+    # Load the pyprojects.toml file and collect the scripts.
     with PYPROJECT.open("rb") as handle:
         pyproject = tomllib.load(handle)
 
@@ -71,7 +70,9 @@ def get_test_executables() -> dict[str, str]:
         .get("scripts", {})
     )
 
-    executables = {}
+    # Collect all test directories that have a corresponding
+    # `oet_` script. The names must match.
+    executables: dict[str, str] = {}
 
     for script in scripts:
         if not script.startswith("oet_"):
@@ -162,8 +163,8 @@ def parse_args() -> argparse.Namespace:
         "--refresh",
         action="store_true",
         help=(
-            "Run install.py again even if the requested managed environment "
-            "already exists. Cannot be used with --bin-dir."
+            "Refresh the managed environment if it already exists. "
+            "Cannot be used with --bin-dir."
         ),
     )
 
@@ -220,12 +221,12 @@ def get_external_venv(
     installations: dict[str, Path],
 ) -> Path:
     """
-    Get the venv belonging to the targets test name.
+    Get the venv belonging to the script that should be used for the `target` test.
 
     Parameters
     ----------
     target: str
-        The target name of the test.
+        The name of the test.
     installations: dict[str, Path]
         The installations (script-venv mapping).
     
@@ -461,7 +462,7 @@ def install_environment(
     installer_python: Path,
     venv_root: Path,
     bin_root: Path,
-    reinstall: bool,
+    refresh: bool,
 ) -> tuple[Path, Path]:
     """
     Create or reuse an OET installation.
@@ -486,19 +487,20 @@ def install_environment(
     # Check if the environment is ready
     ready = environment_is_ready(venv_dir, bin_dir)
 
+    # If the installation is ready, but a reinstallation should be done,
+    # remove the existing venv and bin dir.
+    if refresh:
+        print()
+        print(f"[setup] Recreating environment '{environment}'")
+        shutil.rmtree(venv_dir, ignore_errors=True)
+        shutil.rmtree(bin_dir, ignore_errors=True)
     # If the installation is ready and no reinstallation should be done, return
-    if ready and not reinstall:
+    elif ready:
         print()
         print(f"[setup] Reusing environment '{environment}'")
         print(f"[setup] venv: {venv_dir}")
         print(f"[setup] bin:  {bin_dir}")
         return venv_dir, bin_dir
-
-    # If the installation is ready and reinstallation should be done
-    # or if it is not ready, install it.
-    if ready:
-        print()
-        print(f"[setup] Refreshing environment '{environment}'")
     else:
         print()
         print(f"[setup] Setting up environment '{environment}'")
@@ -647,7 +649,7 @@ def run_target(
     installer_python: Path | None,
     venv_root: Path,
     bin_root: Path,
-    reinstall: bool,
+    refresh: bool,
     installed: dict[str, tuple[Path, Path]],
     external_installations: dict[str, Path] | None = None,
     external_bin_dir: Path | None = None,
@@ -681,16 +683,22 @@ def run_target(
     """
     # If there is an external installation that should be tested, no installation is done.
     if external_installations is not None:
-        assert external_bin_dir is not None
+        if external_bin_dir is None:
+            raise RuntimeError(
+                "external_bin_dir is required when external_installations is provided."
+            )
 
         venv_dir = get_external_venv(
             target,
             external_installations,
         )
         bin_dir = external_bin_dir
-    # Otherwise, install the oet
+
     else:
-        assert installer_python is not None
+        if installer_python is None:
+            raise RuntimeError(
+                "installer_python is required for managed installations."
+            )
         environment = TEST_ENVIRONMENTS[target]
 
         if environment not in installed:
@@ -699,7 +707,7 @@ def run_target(
                 installer_python=installer_python,
                 venv_root=venv_root,
                 bin_root=bin_root,
-                reinstall=reinstall,
+                refresh=refresh,
             )
 
         venv_dir, bin_dir = installed[environment]
@@ -791,7 +799,7 @@ def main() -> int:
             installer_python=installer_python,
             venv_root=venv_root,
             bin_root=bin_root,
-            reinstall=args.refresh,
+            refresh=args.refresh,
             installed=installed,
             external_installations=external_installations,
             external_bin_dir=external_bin_dir,

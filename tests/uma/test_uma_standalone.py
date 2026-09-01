@@ -80,10 +80,7 @@ class UmaTests(unittest.TestCase):
                 "Loading the model files timed out. Please check your internet connection."
             )
         except subprocess.CalledProcessError:
-            raise unittest.SkipTest(
-                "Loading the model files failed. "
-                "Make sure the virtual environment with UMA installed is active."
-            )
+            raise unittest.SkipTest("Loading the model files failed. ")
 
     def test_H2O_engrad(self):
         xyz_file, input_file, engrad_out, output_file = get_filenames("H2O")

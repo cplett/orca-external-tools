@@ -105,10 +105,7 @@ class UmaTests(unittest.TestCase):
                 "Loading the model files timed out. Please check your internet connection."
             )
         except subprocess.CalledProcessError:
-            raise unittest.SkipTest(
-                "Loading the model files failed. "
-                "Make sure the virtual environment with UMA installed is active."
-            )
+            raise unittest.SkipTest("Loading the model files failed. ")
 
         # Start the server
         server_out = Path("server.out").resolve()

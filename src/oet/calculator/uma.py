@@ -282,7 +282,7 @@ class UmaCalc(BaseCalc):
         Returns
         -------
         bool
-            Whether special arguments were handled and the script can exit.
+            Whether special arguments were handled and the script can exit or not.
         """
         # Create an argument parser and parse.
         parser = ArgumentParser(add_help=False)
