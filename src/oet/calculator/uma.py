@@ -206,13 +206,104 @@ class UmaCalc(BaseCalc):
             f'Default: "{DEFAULT_CACHE_DIR}".',
         )
         parser.add_argument(
+            "-do",
+            "--download-only",
+            action="store_true",
+            default=False,
+            dest="download_only",
+            help="Only download the model files without performing an actual calculation. "
+            "Respects the model and cache dir defined via command line. ",
+        )
+        parser.add_argument(
             "-o",
             "--offline",
-            type=bool,
+            action="store_true",
             default=False,
             dest="offline_mode",
             help="Force into offline mode. Please note that there will be an error if the model parameters are not found.",
         )
+
+    def process_input_args(
+        self,
+        input_args: dict[str, Any],
+    ) -> tuple[str, str, str, str, bool, bool]:
+        """
+        Process the input arguments.
+
+        Parameters
+        ----------
+        input_args: dict[str, Any]
+            The input arguments.
+
+        Returns
+        -------
+        str
+            The parameterization.
+        str
+            The base model.
+        str
+            The device to use (cpu or gpu).
+        str
+            The cache directory for the model files.
+        bool
+            Stay in offline mode?
+        bool
+            Download only the models?
+        """
+        # Get the arguments parsed as defined in extend_parser
+        param = input_args.get("param")
+        basemodel = input_args.get("basemodel")
+        device = input_args.get("device")
+        cache_dir = input_args.get("cache_dir")
+        offline_mode = input_args.get("offline_mode")
+        download_only = input_args.get("download_only")
+        # Do some type checking
+        if (
+            not isinstance(param, str)
+            or not isinstance(basemodel, str)
+            or not isinstance(device, str)
+            or not isinstance(cache_dir, str)
+            or not isinstance(offline_mode, bool)
+            or not isinstance(download_only, bool)
+        ):
+            raise TypeError("Problems handling input parameters.")
+
+        return param, basemodel, device, cache_dir, offline_mode, download_only
+
+    def handle_special_args(self, input_args: list[str] | None = None) -> bool:
+        """
+        Handle special arguments that don't require an input file.
+
+        Parameters
+        ----------
+        input_args: list [str]
+            The input arguments.
+
+        Returns
+        -------
+        bool
+            Whether special arguments were handled and the script can exit.
+        """
+        # Create an argument parser and parse.
+        parser = ArgumentParser(add_help=False)
+        self.extend_parser(parser=parser)
+        args_parsed, _ = parser.parse_known_args(input_args)
+
+        # Get the calculator specific parameters
+        param, basemodel, device, cache_dir, _, download_only = self.process_input_args(
+            input_args=vars(args_parsed)
+        )
+
+        # Handle download only.
+        if download_only:
+            print(f"Downloading model files if necessary to {DEFAULT_CACHE_DIR}.")
+            self.set_calculator(
+                param=param, basemodel=basemodel, device=device, cache_dir=cache_dir
+            )
+            print("Done")
+            return True
+
+        return False
 
     def run_uma(
         self,
@@ -292,18 +383,9 @@ class UmaCalc(BaseCalc):
             Flattened gradient vector (Eh/Bohr), if computed, otherwise empty
         """
         # Get the arguments parsed as defined in extend_parser
-        param = args_parsed.get("param")
-        basemodel = args_parsed.get("basemodel")
-        device = args_parsed.get("device")
-        cache_dir = args_parsed.get("cache_dir")
-        offline_mode = args_parsed.get("offline_mode")
-        if (
-            not isinstance(param, str)
-            or not isinstance(basemodel, str)
-            or not isinstance(device, str)
-            or not isinstance(cache_dir, str)
-        ):
-            raise TypeError("Problems handling input parameters.")
+        param, basemodel, device, cache_dir, offline_mode, _ = self.process_input_args(
+            input_args=args_parsed
+        )
         # Check if the model files are available
         model_files_available = self.check_for_model_files(basemodel=basemodel, cache_dir=cache_dir)
         # If they are available, switch to offline mode.
@@ -342,6 +424,8 @@ def main() -> None:
     Main routine for execution
     """
     calculator = UmaCalc()
+    if calculator.handle_special_args():
+        return
     inputfile, args, args_not_parsed = calculator.parse_args()
     calculator.run(inputfile=inputfile, args_parsed=args, args_not_parsed=args_not_parsed)
 

@@ -1,7 +1,9 @@
 import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
+from oet.calculator.aimnet2 import DEFAULT_MODEL_PATH
 from oet.core.test_utilities import (
     OH,
     WATER,
@@ -18,6 +20,12 @@ from oet.core.test_utilities import (
 # v0.2 is bit-exact deterministic across runs and between standalone
 # wrapper and server paths, so places=6 holds.
 
+# Model for running the tests
+aimnet_model = "aimnet2"
+
+# Default maximum time (in sec) to download the model files if not present
+timeout = 600
+
 # Get the path to the script that should be tested
 resolved_aimnet2_script = shutil.which("oet_aimnet2")
 if resolved_aimnet2_script is None:
@@ -28,6 +36,28 @@ if resolved_aimnet2_script is None:
 aimnet2_script_path = Path(resolved_aimnet2_script)
 
 
+def cache_model_files(model: str, cache_dir: Path = DEFAULT_MODEL_PATH) -> None:
+    """
+    Wrapper to set check if the required model files are present. If not, they are downloaded.
+
+    model: str
+        Model for computing the test cases.
+    cache_dir: str, default: DEFAULT_MODEL_PATH
+        The cache directory used to store the model data.
+    """
+    subprocess.run(
+        [
+            aimnet2_script_path,
+            "--download-only",
+            "--model",
+            model,
+            "--model-path",
+            str(cache_dir),
+        ],
+        check=True,
+    )
+
+
 def run_aimnet2(inputfile: str, output_file: str) -> None:
     run_wrapper(
         inputfile=inputfile, script_path=aimnet2_script_path, outfile=output_file, timeout=30
@@ -35,6 +65,25 @@ def run_aimnet2(inputfile: str, output_file: str) -> None:
 
 
 class Aimnet2Tests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """
+        Test starting the server
+        """
+        # Pre-download AIMNet2 model files
+        print("Checking the model files and downloading them if necessary.")
+
+        try:
+            cache_model_files(aimnet_model)
+        except subprocess.TimeoutExpired as e:
+            raise TimeoutError(
+                "Loading the model files timed out. "
+                "Please check your internet connection and consider "
+                "increasing the timeout."
+            ) from e
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError("Loading the model files failed.") from e
+
     def test_H2O_engrad(self):
         xyz_file, input_file, engrad_out, output_file = get_filenames("H2O")
 

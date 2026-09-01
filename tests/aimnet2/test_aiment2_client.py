@@ -2,31 +2,29 @@ import os
 import shutil
 import signal
 import subprocess
-import time
 import unittest
 from pathlib import Path
 
-from oet.calculator.aimnet2 import DEFAULT_MODEL_PATH, Aimnet2Calc
+from oet.calculator.aimnet2 import DEFAULT_MODEL_PATH
 from oet.core.test_utilities import (
     OH,
     WATER,
-    TimeoutCall,
-    TimeoutCallError,
     get_filenames,
     read_result_file,
     run_wrapper,
+    wait_for_server,
     write_input_file,
     write_xyz_file,
 )
 
 # Get the path to the script that should be tested
-resolved_aimnet2_script = shutil.which("oet_client")
-if resolved_aimnet2_script is None:
+resolved_aimnet2_client = shutil.which("oet_client")
+if resolved_aimnet2_client is None:
     raise RuntimeError(
         "The 'oet_client' script was not found in PATH. "
         "Run the tests with the project's virtual environment activated."
     )
-aimnet2_script_path = Path(resolved_aimnet2_script)
+aimnet2_client_path = Path(resolved_aimnet2_client)
 
 resolved_server_script = shutil.which("oet_server")
 if resolved_server_script is None:
@@ -35,6 +33,15 @@ if resolved_server_script is None:
         "Run the tests with the project's virtual environment activated."
     )
 aimnet2_server_path = Path(resolved_server_script)
+
+# Get the path to the script for downloading model files.
+resolved_aimnet2_script = shutil.which("oet_aimnet2")
+if resolved_aimnet2_script is None:
+    raise RuntimeError(
+        "The 'oet_aimnet2' script was not found in PATH. "
+        "Run the tests with the project's virtual environment activated."
+    )
+aimnet2_script_path = Path(resolved_aimnet2_script)
 
 # Default ID and port of server. Change if needed
 id_port = "127.0.0.1:9000"
@@ -46,26 +53,32 @@ aimnet_model = "aimnet2"
 timeout = 600
 
 
-def cache_model_files(
-    model: str, device: str = "cpu", cache_dir: Path = DEFAULT_MODEL_PATH
-) -> None:
+def cache_model_files(model: str, cache_dir: Path = DEFAULT_MODEL_PATH) -> None:
     """
     Wrapper to set check if the required model files are present. If not, they are downloaded.
 
     model: str
         Model for computing the test cases.
-    device str, default: cpu
-        Device used for the calculations.
     cache_dir: str, default: DEFAULT_MODEL_PATH
         The cache directory used to store the model data.
     """
-    Aimnet2Calc.get_model_file(model=model, model_dir=str(cache_dir))
+    subprocess.run(
+        [
+            aimnet2_script_path,
+            "--download-only",
+            "--model",
+            model,
+            "--model-path",
+            str(cache_dir),
+        ],
+        check=True,
+    )
 
 
 def run_aimnet2(inputfile: str, output_file: str) -> None:
     run_wrapper(
         inputfile=inputfile,
-        script_path=aimnet2_script_path,
+        script_path=aimnet2_client_path,
         outfile=output_file,
         args=["--bind", id_port],
         timeout=30,
@@ -80,20 +93,17 @@ class Aimnet2Tests(unittest.TestCase):
         """
         # Pre-download AIMNet2 model files
         print("Checking the model files and downloading them if necessary.")
-        # Make a timeout call to avoid hanging forever
-        get_pretrained_mlip_timeout = TimeoutCall(fn=cache_model_files)
-        ok, payload = get_pretrained_mlip_timeout(aimnet_model, timeout=timeout)
-        # Check if the model files could not be loaded
-        if not ok:
-            # Timeout
-            if payload == TimeoutCallError.TIMEOUT:
-                raise TimeoutError(
-                    "Loading the model files timed out. "
-                    "Please check your internet connection and consider increasing the time before timing out."
-                )
-            # General errors and crashes
-            else:
-                raise RuntimeError("Loading the model files failed.")
+
+        try:
+            cache_model_files(aimnet_model)
+        except subprocess.TimeoutExpired as e:
+            raise TimeoutError(
+                "Loading the model files timed out. "
+                "Please check your internet connection and consider "
+                "increasing the timeout."
+            ) from e
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError("Loading the model files failed.") from e
 
         # Set up the server
         server_out = Path("server.out").resolve()
@@ -114,9 +124,12 @@ class Aimnet2Tests(unittest.TestCase):
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
-        # Wait a little to make sure it is setup
-        # If there are timeout errors, try increasing the sleep time to, .e.g, 30.
-        time.sleep(10)
+        # Wait for the server to be ready.
+        wait_for_server(
+            process=cls.server,
+            id_port=id_port,
+            timeout=30.0,
+        )
 
     @classmethod
     def tearDownClass(cls):
