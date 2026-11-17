@@ -45,6 +45,7 @@ from waitress import serve
 from oet import __version__ as version
 from oet.core.base_calc import CALCULATOR_CLASSES, BaseCalc, CalculationData
 from oet.core.misc import get_ncores_from_input
+from oet.core.xtb_solvation import extend_parser_by_xtb_solvation_arguments
 
 if typing.TYPE_CHECKING:
     from argparse import Namespace
@@ -308,6 +309,8 @@ class CalculatorClass:
         if self._cls is None:
             raise RuntimeError("Call set_calculator_type() first.")
         self._cls.extend_parser(parser)
+        if self._cls.supports_xtb_solvation:
+            extend_parser_by_xtb_solvation_arguments(parser)
 
 
 class OtoolServer:

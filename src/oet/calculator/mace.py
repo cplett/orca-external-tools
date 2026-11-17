@@ -77,6 +77,8 @@ class MaceCalc(BaseCalc):
     _calc: MACECalculator | None = None
     # For MACE, in addition to the default properties, also Hessians are available.
     DEFAULT_PROPERTIES = BaseCalc.DEFAULT_PROPERTIES | {Property.HESSIAN}
+    # Allow xtb solvation correction
+    supports_xtb_solvation = True
 
     def set_calculator(
         self,
@@ -360,14 +362,15 @@ class MaceCalc(BaseCalc):
         # Get the energy and gradients
         energy = atoms.get_potential_energy() / ENERGY_CONVERSION["eV"]
         gradient = []
-        try:
-            forces = atoms.get_forces()
-            # Convert forces to gradient (-1) and unit conversion
-            fac = -LENGTH_CONVERSION["Ang"] / ENERGY_CONVERSION["eV"]
-            gradient = (fac * forces).flatten().tolist()
-        except PropertyNotImplementedError:
-            # forces may not be available
-            pass
+        if calc_data.dograd:
+            try:
+                forces = atoms.get_forces()
+                # Convert forces to gradient (-1) and unit conversion
+                fac = -LENGTH_CONVERSION["Ang"] / ENERGY_CONVERSION["eV"]
+                gradient = (fac * forces).flatten().tolist()
+            except PropertyNotImplementedError:
+                # forces may not be available
+                pass
 
         # Compute Hessians
         hessian = self._get_hessian(atoms) if calc_data.dohess else []

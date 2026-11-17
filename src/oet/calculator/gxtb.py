@@ -30,6 +30,9 @@ from oet.core.misc import (
 
 
 class GxtbCalc(BaseCalc):
+    # Pass unknown arguments to the g-xtb program.
+    allow_unkown_cli_arguments = True
+
     @property
     def PROGRAM_NAMES(self) -> list[str]:
         """Program names to search for in PATH"""

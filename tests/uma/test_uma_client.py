@@ -17,6 +17,10 @@ from oet.core.test_utilities import (
     write_xyz_file,
 )
 
+# Path to xtb for the tests involving solvation correction.
+# Leave xtb_executable_path empty, if xtb from system path should be called.
+xtb_executable_path = ""
+
 # Get the path to the script that should be tested
 resolved_uma_client = shutil.which("oet_client")
 if resolved_uma_client is None:
@@ -76,12 +80,19 @@ def cache_model_files(basemodel: str, param: str = "omol") -> None:
     )
 
 
-def run_uma(inputfile: str, output_file: str) -> None:
+def run_uma(
+    inputfile: str,
+    output_file: str,
+    args: list[str] | None = None,
+) -> None:
+    arguments = args if args else []
+    if xtb_executable_path:
+        arguments += ["--xtb-solvation-exe", xtb_executable_path]
     run_wrapper(
         inputfile=inputfile,
         script_path=uma_client_path,
         outfile=output_file,
-        args=["--bind", ip_port, "--model", uma_model],
+        args=arguments + ["--bind", ip_port, "--model", uma_model],
         timeout=60,
     )
 
@@ -272,6 +283,180 @@ class UmaTests(unittest.TestCase):
             -0.22911751402301073,
             0.1077465455472281,
             0.2848230500088227,
+        ]
+
+        try:
+            num_atoms, energy, gradients = read_result_file(engrad_out)
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Error wrapper outputfile not found. Check {output_file} for details"
+            ) from e
+
+        self.assertEqual(num_atoms, expected_num_atoms)
+        self.assertAlmostEqual(energy, expected_energy, places=7)
+        # No gradient was requested, so none must be written
+        self.assertEqual(gradients, [])
+
+        try:
+            hessian = read_hess_file(hess_out)
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Error Hessian outputfile not found. Check {output_file} for details"
+            ) from e
+
+        self.assertEqual(len(hessian), (3 * expected_num_atoms) ** 2)
+        for h1, h2 in zip(hessian, expected_hessian):
+            self.assertAlmostEqual(h1, h2, places=5)
+
+        # Check symmetry
+        ndim = 3 * expected_num_atoms
+        for i in range(ndim):
+            for j in range(ndim):
+                self.assertAlmostEqual(hessian[i * ndim + j], hessian[j * ndim + i], places=5)
+
+    def test_H2O_solvation_gradient(self):
+        xyz_file, input_file, engrad_out, output_file = get_filenames("H2O_solv_grad")
+
+        write_xyz_file(xyz_file, WATER)
+        write_input_file(
+            filename=input_file,
+            xyz_filename=xyz_file,
+            charge=0,
+            multiplicity=1,
+            ncores=2,
+            do_gradient=1,
+        )
+        run_uma(input_file, output_file, args=["--xtb-solvent", "water"])
+        expected_num_atoms = 3
+        expected_energy = -76.43468102541
+        expected_gradients = [
+            -2.571498316491e-03,
+            -1.873541065506e-03,
+            1.172834335299e-03,
+            2.985381485377e-04,
+            3.927222720144e-03,
+            2.145703095728e-03,
+            2.272959935122e-03,
+            -2.053681887468e-03,
+            -3.318537780273e-03,
+        ]
+
+        try:
+            num_atoms, energy, gradients = read_result_file(engrad_out)
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Error wrapper outputfile not found. Check {output_file} for details"
+            ) from e
+
+        self.assertEqual(num_atoms, expected_num_atoms)
+        self.assertAlmostEqual(energy, expected_energy, places=7)
+        for g1, g2 in zip(gradients, expected_gradients):
+            self.assertAlmostEqual(g1, g2, places=7)
+
+    def test_H2O_solvation_hessian(self):
+        xyz_file, input_file, engrad_out, output_file = get_filenames("H2O_solv_hess")
+        hess_out = "H2O_solv_hess.hess"
+
+        write_xyz_file(xyz_file, WATER)
+        write_input_file(
+            filename=input_file,
+            xyz_filename=xyz_file,
+            charge=0,
+            multiplicity=1,
+            ncores=2,
+            do_gradient=0,
+            do_hessian=1,
+        )
+        run_uma(input_file, output_file, args=["--xtb-solvent", "water"])
+        expected_num_atoms = 3
+        expected_energy = -76.43468102541
+
+        # Reference Hessian taken directly from the UMA calculator (uma-s-1p1, omol) on
+        # this geometry, cross-checked against the semi-numerical Hessian of a manual ORCA
+        # `! extopt numfreq` run (see tmp-hess-test/orca-uma-numhess.hess): they agree to
+        # ~4 significant figures (max abs deviation 1.3e-5 Eh/Bohr^2).
+        expected_hessian = [
+            2.7437925513e-01,
+            7.3370678574e-02,
+            -2.1056555924e-01,
+            -6.6410754243e-02,
+            -1.1430038966e-01,
+            -7.2867296653e-03,
+            -2.0796848598e-01,
+            4.0929711086e-02,
+            2.1785232756e-01,
+            7.3370671124e-02,
+            4.8656116913e-01,
+            2.0769033088e-01,
+            -1.4974566108e-01,
+            -4.2338531269e-01,
+            -1.0072252868e-01,
+            7.6374975058e-02,
+            -6.3175856448e-02,
+            -1.0696781710e-01,
+            -2.1056560394e-01,
+            2.0769039049e-01,
+            3.3016633244e-01,
+            -2.7882673295e-02,
+            -1.3451075507e-01,
+            -5.5961992412e-02,
+            2.3844825675e-01,
+            -7.3179613066e-02,
+            -2.7420436621e-01,
+            -6.6410769144e-02,
+            -1.4974567598e-01,
+            -2.7882682608e-02,
+            6.1440811428e-02,
+            1.2281310204e-01,
+            1.6425153776e-02,
+            4.9699609759e-03,
+            2.6932570320e-02,
+            1.1457529763e-02,
+            -1.1430039711e-01,
+            -4.2338531269e-01,
+            -1.3451074017e-01,
+            1.2281307969e-01,
+            4.3660521011e-01,
+            1.3441022312e-01,
+            -8.5126881641e-03,
+            -1.3219917083e-02,
+            1.0052672802e-04,
+            -7.2867259400e-03,
+            -1.0072252868e-01,
+            -5.5961981236e-02,
+            1.6425145394e-02,
+            1.3441019331e-01,
+            6.6253101719e-02,
+            -9.1384180574e-03,
+            -3.3687675810e-02,
+            -1.0291112201e-02,
+            -2.0796851579e-01,
+            7.6374975058e-02,
+            2.3844825675e-01,
+            4.9699623729e-03,
+            -8.5126863015e-03,
+            -9.1384161948e-03,
+            2.0299855072e-01,
+            -6.7862292482e-02,
+            -2.2930986291e-01,
+            4.0929718536e-02,
+            -6.3175863899e-02,
+            -7.3179620517e-02,
+            2.6932579633e-02,
+            -1.3219916152e-02,
+            -3.3687675810e-02,
+            -6.7862292482e-02,
+            7.6395783776e-02,
+            1.0686730015e-01,
+            2.1785232756e-01,
+            -1.0696782455e-01,
+            -2.7420436621e-01,
+            1.1457529763e-02,
+            1.0052963840e-04,
+            -1.0291115926e-02,
+            -2.2930986291e-01,
+            1.0686730015e-01,
+            2.8449547934e-01,
         ]
 
         try:

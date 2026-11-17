@@ -90,6 +90,8 @@ class UmaSettings:
 class UmaCalc(BaseCalc):
     # Fairchem calculator used to compute energy and grad
     _calc: FAIRChemCalculator | None = None
+    # Allow xtb solvation correction
+    supports_xtb_solvation = True
 
     # For UMA, in addition to the default properties, also Hessians are available.
     DEFAULT_PROPERTIES = BaseCalc.DEFAULT_PROPERTIES | {Property.HESSIAN}

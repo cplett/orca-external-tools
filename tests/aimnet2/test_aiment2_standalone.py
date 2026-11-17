@@ -14,6 +14,10 @@ from oet.core.test_utilities import (
     write_xyz_file,
 )
 
+# Path to xtb for the tests involving solvation correction.
+# Leave xtb_executable_path empty, if xtb from system path should be called.
+xtb_executable_path = ""
+
 # Reference values regenerated against aimnet v0.2 (PyPI). The v0.2
 # release ships retrained model files (storage path .../aimnet2v2/...)
 # whose energies differ from v0.1.x by ~1e-6 Eh at this geometry.
@@ -55,9 +59,20 @@ def cache_model_files(model: str) -> None:
     )
 
 
-def run_aimnet2(inputfile: str, output_file: str) -> None:
+def run_aimnet2(
+    inputfile: str,
+    output_file: str,
+    args: list[str] | None = None,
+) -> None:
+    arguments = args if args else []
+    if xtb_executable_path:
+        arguments += ["--xtb-solvation-exe", xtb_executable_path]
     run_wrapper(
-        inputfile=inputfile, script_path=aimnet2_script_path, outfile=output_file, timeout=30
+        inputfile=inputfile,
+        script_path=aimnet2_script_path,
+        outfile=output_file,
+        timeout=30,
+        args=arguments,
     )
 
 
@@ -235,6 +250,176 @@ class Aimnet2Tests(unittest.TestCase):
 
         self.assertEqual(num_atoms, expected_num_atoms)
         self.assertAlmostEqual(energy, expected_energy, places=6)
+        self.assertEqual(gradients, [])
+
+        try:
+            hessian = read_hess_file(hess_out)
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Error Hessian outputfile not found. Check {output_file} for details"
+            ) from e
+
+        self.assertEqual(len(hessian), (3 * expected_num_atoms) ** 2)
+        for h1, h2 in zip(hessian, expected_hessian):
+            self.assertAlmostEqual(h1, h2, places=5)
+
+        # Check symmetry
+        ndim = 3 * expected_num_atoms
+        for i in range(ndim):
+            for j in range(ndim):
+                self.assertAlmostEqual(hessian[i * ndim + j], hessian[j * ndim + i], places=5)
+
+    def test_H2O_solvation_gradient(self):
+        xyz_file, input_file, engrad_out, output_file = get_filenames("H2O_solv_grad")
+
+        write_xyz_file(xyz_file, WATER)
+        write_input_file(
+            filename=input_file,
+            xyz_filename=xyz_file,
+            charge=0,
+            multiplicity=1,
+            ncores=2,
+            do_gradient=1,
+        )
+        run_aimnet2(input_file, output_file, args=["--xtb-solvent", "water"])
+        expected_num_atoms = 3
+        expected_energy = -76.47798549557
+        expected_gradients = [
+            -5.459824849629e-03,
+            -4.011833016775e-03,
+            2.683647934751e-03,
+            1.223030636222e-03,
+            6.780953879265e-03,
+            2.922630199017e-03,
+            4.236797007375e-03,
+            -2.769118417768e-03,
+            -5.606281393397e-03,
+        ]
+
+        try:
+            num_atoms, energy, gradients = read_result_file(engrad_out)
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Error wrapper outputfile not found. Check {output_file} for details"
+            ) from e
+
+        self.assertEqual(num_atoms, expected_num_atoms)
+        self.assertAlmostEqual(energy, expected_energy, places=7)
+        for g1, g2 in zip(gradients, expected_gradients):
+            self.assertAlmostEqual(g1, g2, places=7)
+
+    def test_H2O_solvation_hessian(self):
+        xyz_file, input_file, engrad_out, output_file = get_filenames("H2O_solv_hess")
+        hess_out = "H2O_solv_hess.hess"
+
+        write_xyz_file(xyz_file, WATER)
+        write_input_file(
+            filename=input_file,
+            xyz_filename=xyz_file,
+            charge=0,
+            multiplicity=1,
+            ncores=2,
+            do_gradient=0,
+            do_hessian=1,
+        )
+        run_aimnet2(input_file, output_file, args=["--xtb-solvent", "water"])
+        expected_num_atoms = 3
+        expected_energy = -76.47798549557
+
+        expected_hessian = [
+            2.6500666316e-01,
+            6.7028610260e-02,
+            -2.0202069697e-01,
+            -6.4239722112e-02,
+            -1.0672774620e-01,
+            -6.6038904728e-03,
+            -2.0076694849e-01,
+            3.9699143392e-02,
+            2.0862458977e-01,
+            6.7028595359e-02,
+            4.7448428463e-01,
+            2.0470968141e-01,
+            -1.4420067078e-01,
+            -4.1095205201e-01,
+            -9.7779392883e-02,
+            7.7172067972e-02,
+            -6.3532225169e-02,
+            -1.0693028853e-01,
+            -2.0202075658e-01,
+            2.0470963671e-01,
+            3.2374619694e-01,
+            -2.8378019558e-02,
+            -1.3350045634e-01,
+            -5.6631348847e-02,
+            2.3039876868e-01,
+            -7.1209202719e-02,
+            -2.6711484074e-01,
+            -6.4239707211e-02,
+            -1.4420065588e-01,
+            -2.8378025146e-02,
+            6.0721163573e-02,
+            1.1808360014e-01,
+            1.5982705704e-02,
+            3.5185401454e-03,
+            2.6117057708e-02,
+            1.2395315716e-02,
+            -1.0672773130e-01,
+            -4.1095205201e-01,
+            -1.3350044144e-01,
+            1.1808359268e-01,
+            4.2297952871e-01,
+            1.3001393353e-01,
+            -1.1355860454e-02,
+            -1.2027514057e-02,
+            3.4865222427e-03,
+            -6.6038923355e-03,
+            -9.7779392883e-02,
+            -5.6631345122e-02,
+            1.5982711292e-02,
+            1.3001393353e-01,
+            6.5819455576e-02,
+            -9.3788194223e-03,
+            -3.2234548098e-02,
+            -9.1881142796e-03,
+            -2.0076696340e-01,
+            7.7172053071e-02,
+            2.3039875378e-01,
+            3.5185424737e-03,
+            -1.1355859522e-02,
+            -9.3788203536e-03,
+            1.9724838633e-01,
+            -6.5816191686e-02,
+            -2.2101991480e-01,
+            3.9699154568e-02,
+            -6.3532217718e-02,
+            -7.1209202719e-02,
+            2.6117057708e-02,
+            -1.2027520577e-02,
+            -3.2234551823e-02,
+            -6.5816214038e-02,
+            7.5559739226e-02,
+            1.0344375837e-01,
+            2.0862464938e-01,
+            -1.0693028108e-01,
+            -2.6711490035e-01,
+            1.2395313854e-02,
+            3.4865194487e-03,
+            -9.1881152109e-03,
+            -2.2101997441e-01,
+            1.0344375837e-01,
+            2.7630296993e-01,
+        ]
+
+        try:
+            num_atoms, energy, gradients = read_result_file(engrad_out)
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Error wrapper outputfile not found. Check {output_file} for details"
+            ) from e
+
+        self.assertEqual(num_atoms, expected_num_atoms)
+        self.assertAlmostEqual(energy, expected_energy, places=7)
+        # No gradient was requested, so none must be written
         self.assertEqual(gradients, [])
 
         try:

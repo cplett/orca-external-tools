@@ -45,6 +45,9 @@ from oet.core.misc import check_path, run_command
 
 
 class MlatomCalc(BaseCalc):
+    # Pass unknown arguments to MLAtom program.
+    allow_unkown_cli_arguments = True
+
     @property
     def PROGRAM_NAMES(self) -> list[str]:
         """

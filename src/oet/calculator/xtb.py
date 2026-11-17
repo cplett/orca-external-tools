@@ -24,6 +24,9 @@ from oet.core.misc import (
 
 
 class XtbCalc(BaseCalc):
+    # Pass unknown arguments to the xtb program.
+    allow_unkown_cli_arguments = True
+
     # For xtb, in addition to the default properties, also Hessians are available.
     DEFAULT_PROPERTIES = BaseCalc.DEFAULT_PROPERTIES | {Property.HESSIAN}
 

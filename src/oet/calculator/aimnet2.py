@@ -224,6 +224,9 @@ class Aimnet2Calc(BaseCalc):
     _calc: AIMNet2Calculator | None = None
     _setup_args: Aimnet2Settings | None = None
 
+    # Allow xtb solvation correction
+    supports_xtb_solvation = True
+
     def get_calculator(self) -> AIMNet2Calculator:
         """
         Returns AIMNet2 calculator

@@ -30,6 +30,9 @@ TAG_HEADER = re.compile(r"^(\S+)\s*:(\w+):(\d+):([\d,]*)\s*$")
 
 
 class TbliteCalc(BaseCalc):
+    # Pass unknown arguments to tblite program.
+    allow_unkown_cli_arguments = True
+
     @property
     def PROGRAM_NAMES(self) -> list[str]:
         """Program names to search for in PATH"""

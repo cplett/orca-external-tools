@@ -36,6 +36,10 @@ from oet.core.misc import (
     write_hess_output,
     write_output,
 )
+from oet.core.xtb_solvation import (
+    compute_xtb_solvation_correction,
+    extend_parser_by_xtb_solvation_arguments,
+)
 
 # Full list of all available calculator types.
 # Add a new calculator here
@@ -231,6 +235,13 @@ class BaseCalc(ABC):
     # Overwrite in wrapper if you require newer versions
     minimal_python_version: tuple[int, int] = (3, 10)
 
+    # Whether a calculator supports adding a xtb solvation contribution to energy, gradient, and Hessian.
+    supports_xtb_solvation: bool = False
+
+    # Whether a calculator allows the usage of unknown CLI arguments.
+    # Depending on the calculator, these flags are simply passed to the external program without verification.
+    allow_unkown_cli_arguments: bool = False
+
     # A set of properties that will per default be assumed to be supported by every calculator.
     # Will be used to initialize `self.available_properties`.
     DEFAULT_PROPERTIES = frozenset(
@@ -309,6 +320,9 @@ class BaseCalc(ABC):
         """
         # Check if python version matches requirements if redefined by subclass
         self._check_python_version()
+        # Check if unknown CLI options should be rejected.
+        if not self.allow_unkown_cli_arguments and args_not_parsed:
+            raise ValueError(f"The following CLI arguments are unknown: {args_not_parsed}")
         # Check if calculation directory is located somewhere else (important for server)
         start_dir = Path.cwd()
         if directory:
@@ -348,6 +362,26 @@ class BaseCalc(ABC):
                 os.chdir(calc_data.orca_input_dir)
             except Exception as e:
                 raise RuntimeError("Failed to compute energy and/or gradient") from e
+
+            # Compute xtb solvation contribution if requested
+            try:
+                # Go to tmp dir where the calculation should be performed
+                os.chdir(calc_data.tmp_dir)
+                solv_energy, solv_gradient, solv_hessian = compute_xtb_solvation_correction(
+                    calc_data=calc_data, args_parsed=args_parsed
+                )
+                if solv_energy is not None:
+                    result.energy = result.energy + solv_energy
+                if solv_gradient:
+                    result.gradient = [
+                        gas + solv for gas, solv in zip(result.gradient, solv_gradient)
+                    ]
+                if solv_hessian:
+                    result.hessian = [gas + solv for gas, solv in zip(result.hessian, solv_hessian)]
+                # Go back to directory where input file was located
+                os.chdir(calc_data.orca_input_dir)
+            except Exception as e:
+                raise RuntimeError("Failed to compute xtb solvation contribution") from e
 
             ################################
             # Sanity checks of the results #
@@ -431,6 +465,9 @@ class BaseCalc(ABC):
         parser.add_argument("--version", action="version", version=version)
         # Extend parser with in subclass defined arguments
         self.extend_parser(parser)
+        # Add settings for to the xtb solvation contribution if applicable.
+        if self.supports_xtb_solvation:
+            extend_parser_by_xtb_solvation_arguments(parser)
 
         # Argument parsing
         try:

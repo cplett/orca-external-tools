@@ -31,6 +31,9 @@ from oet.core.misc import (
 
 
 class MopacCalc(BaseCalc):
+    # Pass unknown arguments to the mopac program.
+    allow_unkown_cli_arguments = True
+
     # MOPAC supports Hessian calculations in addition to the default properties.
     DEFAULT_PROPERTIES = BaseCalc.DEFAULT_PROPERTIES | {Property.HESSIAN}
 
